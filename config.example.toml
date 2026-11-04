@@ -1,0 +1,83 @@
+# Example Configuration File for ssh-mcp
+# Copy this file to config.toml or specify via: ssh-mcp -c /path/to/config.toml
+# Note: config.toml is OPTIONAL. ssh-mcp works out-of-the-box with interactive TUI.
+
+[general]
+# Execution mode: "tui" (default foreground terminal UI) or "headless" (background daemon)
+mode = "tui"
+
+# Local port for the MCP Streamable HTTP / SSE server
+# Pi Agent connects via: pi mcp add -l ssh --url http://127.0.0.1:8765/mcp
+mcp_port = 8765
+
+# Bind interface. Recommended: 127.0.0.1 (localhost only) for maximum security
+mcp_bind = "127.0.0.1"
+
+[security]
+# Policy Mode:
+#   "high_risk"    -> Safe and mutating commands auto-allowed; destructive commands require approval (Default)
+#   "strict"       -> Every mutating and high-risk command requires approval
+#   "read_only"    -> Blocks all mutating and destructive operations (pure inspection)
+#   "no_approval"  -> Autonomous mode: executes all commands without asking for permission (aliases: "autonomous", "auto")
+hitl_mode = "high_risk"
+
+# Command execution timeout in seconds (default: 60)
+command_timeout_secs = 60
+
+# Anti-Context Window Flooding: Maximum output bytes returned to the AI Agent (default: 32768 = 32KB)
+max_output_bytes = 32768
+
+# Anti-Context Window Flooding: Maximum output lines returned to the AI Agent (default: 1500)
+max_output_lines = 1500
+
+# Path to the append-only JSONL audit log
+audit_log_path = "audit.jsonl"
+
+# Automatic Trust-on-First-Use: If true, automatically saves new host keys in headless mode
+# (In TUI mode, an interactive approval dialog is always shown for new hosts)
+tofu_auto_accept = false
+
+# Enable automatic secret redaction (private keys, tokens, passwords) in logs and agent outputs
+mask_secrets = true
+
+# Permanently blacklisted commands (blocked instantly regardless of policy mode)
+forbidden_commands = [
+    ":(){ :|:& };:",
+    "mkfs",
+    "dd if=/dev/zero",
+    "chmod -R 777 /",
+    "rm -rf /"
+]
+
+# Custom High-Risk commands: Any command matching these strings will trigger approval
+high_risk_commands = [
+    # "kubectl delete",
+    # "terraform apply",
+    # "npm publish",
+    # "./deploy.sh"
+]
+
+# Custom Safe commands: Any command matching these strings will run automatically without approval
+safe_commands = [
+    # "docker ps",
+    # "cargo test",
+    # "npm test",
+    # "pm2 status"
+]
+
+# Preset remote hosts. These appear as selectable presets in the TUI!
+# Note: Passwords are NEVER stored in TOML files for security reasons.
+# You can enter the password interactively in the TUI or use SSH Agent / Key file.
+
+[servers.example-server]
+host = "ssh.example.com"
+port = 22
+username = "user"
+auth_method = "agent"   # Options: "password", "key", "agent"
+
+# [servers.my-vps]
+# host = "vps.example.com"
+# port = 2222
+# username = "user"
+# auth_method = "key"
+# key_path = "~/.ssh/id_ed25519"

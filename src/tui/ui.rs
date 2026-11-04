@@ -24,7 +24,9 @@ pub mod tokyo_night {
     pub const RED: Color = Color::Rgb(247, 118, 142);     // #f7768e
     pub const PURPLE: Color = Color::Rgb(187, 154, 247);  // #bb9af7
     pub const COMMENT: Color = Color::Rgb(86, 95, 137);   // #565f89
+    #[allow(dead_code)]
     pub const SEL_BG: Color = Color::Rgb(40, 52, 87);     // #283457
+    #[allow(dead_code)]
     pub const DARK_RED_BG: Color = Color::Rgb(68, 30, 45);
 }
 
@@ -463,7 +465,7 @@ fn render_dashboard_screen(f: &mut Frame, app: &App) {
 
                 let row = Row::new(cells);
                 if is_selected {
-                    row.style(Style::default().bg(tokyo_night::SEL_BG))
+                    row.style(Style::default().add_modifier(Modifier::BOLD))
                 } else {
                     row
                 }
@@ -549,8 +551,7 @@ fn render_hitl_modal(f: &mut Frame, hitl: &crate::mcp::HitlRequest) {
     let cmd_p = Paragraph::new(format!("> {}", hitl.command_or_target))
         .style(
             Style::default()
-                .fg(tokyo_night::FG)
-                .bg(tokyo_night::DARK_RED_BG)
+                .fg(tokyo_night::RED)
                 .add_modifier(Modifier::BOLD),
         )
         .wrap(Wrap { trim: true });

@@ -179,6 +179,14 @@ impl McpServer {
                         "max_lines": {
                             "type": "number",
                             "description": "Maximum output lines before truncating (default: 1500)."
+                        },
+                        "approved": {
+                            "type": "boolean",
+                            "description": "Set to true if operator has already approved this command in the agent's UI."
+                        },
+                        "allow_session": {
+                            "type": "boolean",
+                            "description": "Set to true if operator allowed this command for the rest of the session."
                         }
                     },
                     "required": ["command"]
@@ -224,6 +232,14 @@ impl McpServer {
                             "type": "string",
                             "enum": ["overwrite", "append", "create_new"],
                             "description": "Write mode (default: overwrite)."
+                        },
+                        "approved": {
+                            "type": "boolean",
+                            "description": "Set to true if operator has already approved this write in the agent's UI."
+                        },
+                        "allow_session": {
+                            "type": "boolean",
+                            "description": "Set to true if operator allowed writing to this path for the rest of the session."
                         }
                     },
                     "required": ["path", "content"]
@@ -325,8 +341,15 @@ impl McpServer {
                     return ToolCallResult::error(err_msg);
                 }
 
-                // Check if session always-allowed
-                let is_session_allowed = self.ctx.session_allowed_commands.lock().contains(cmd);
+                let is_pre_approved = args.get("approved").and_then(|v| v.as_bool()).unwrap_or(false);
+                let is_allow_session = args.get("allow_session").and_then(|v| v.as_bool()).unwrap_or(false);
+
+                if is_allow_session {
+                    self.ctx.session_allowed_commands.lock().insert(cmd.to_string());
+                }
+
+                // Check if session always-allowed or approved from agent
+                let is_session_allowed = is_pre_approved || self.ctx.session_allowed_commands.lock().contains(cmd);
 
                 let requires_approval = !is_session_allowed && match config.security.hitl_mode {
                     HitlMode::HighRisk => risk_tier == RiskTier::HighRisk,
@@ -347,23 +370,38 @@ impl McpServer {
 
                     if self.ctx.hitl_tx.send(hitl_req).await.is_err() {
                         let err_msg = format!(
-                            "Execution rejected: The AI agent requested a HIGH-RISK action ({}). The server is running in headless mode without an interactive operator. To permit autonomous execution, run ssh-mcp with '--no-approval' or set 'hitl_mode = \"no_approval\"' in config.toml.",
-                            cmd
+                            "Execution rejected: '{}' requires operator approval ({}), but ssh-mcp is running headless. Re-run with '--no-approval' to allow autonomous execution.",
+                            cmd, risk_reason
                         );
                         self.log_and_emit(name, cmd, risk_tier, "DENIED_HEADLESS", start_time.elapsed().as_millis() as u64, Some(1), 0).await;
                         return ToolCallResult::error(err_msg);
                     }
 
-                    match hitl_rx.await {
-                        Ok(HitlDecision::ApproveOnce) => {
+                    let hitl_timeout = std::time::Duration::from_secs(15);
+                    match tokio::time::timeout(hitl_timeout, hitl_rx).await {
+                        Ok(Ok(HitlDecision::ApproveOnce)) => {
                             // Proceed
                         }
-                        Ok(HitlDecision::ApproveSession) => {
+                        Ok(Ok(HitlDecision::ApproveSession)) => {
                             self.ctx.session_allowed_commands.lock().insert(cmd.to_string());
                         }
-                        Ok(HitlDecision::Deny) | Err(_) => {
+                        Ok(Ok(HitlDecision::Deny)) => {
                             let err_msg = format!("Execution denied by operator: {}", cmd);
                             self.log_and_emit(name, cmd, risk_tier, "DENIED", start_time.elapsed().as_millis() as u64, Some(1), 0).await;
+                            return ToolCallResult::error(err_msg);
+                        }
+                        Ok(Err(_)) => {
+                            let err_msg = "Approval channel was aborted.".to_string();
+                            return ToolCallResult::error(err_msg);
+                        }
+                        Err(_) => {
+                            let err_msg = format!(
+                                "Approval required for command '{}' ({}).\n\
+                                 Timed out waiting for operator response in ssh-mcp terminal.\n\
+                                 To approve: press [Y] (once) or [A] (session) in ssh-mcp, or restart with '--no-approval'.",
+                                cmd, risk_reason
+                            );
+                            self.log_and_emit(name, cmd, risk_tier, "APPROVAL_TIMEOUT", start_time.elapsed().as_millis() as u64, Some(1), 0).await;
                             return ToolCallResult::error(err_msg);
                         }
                     }
@@ -441,11 +479,20 @@ impl McpServer {
                     return ToolCallResult::error("File write rejected: Server is in Read-Only mode.".to_string());
                 }
 
+                let is_pre_approved = args.get("approved").and_then(|v| v.as_bool()).unwrap_or(false);
+                let is_allow_session = args.get("allow_session").and_then(|v| v.as_bool()).unwrap_or(false);
+
+                if is_allow_session {
+                    self.ctx.session_allowed_commands.lock().insert(path.to_string());
+                }
+
                 // Check HITL for modifying critical system files or if in Strict mode
                 let is_critical_path = path.starts_with("/etc") || path.contains("authorized_keys") || path.starts_with("/boot");
                 let risk_tier = if is_critical_path { RiskTier::HighRisk } else { RiskTier::Mutating };
 
-                let requires_write_approval = match config.security.hitl_mode {
+                let is_session_allowed = is_pre_approved || self.ctx.session_allowed_commands.lock().contains(path);
+
+                let requires_write_approval = !is_session_allowed && match config.security.hitl_mode {
                     HitlMode::Autonomous => false,
                     HitlMode::HighRisk => risk_tier == RiskTier::HighRisk,
                     HitlMode::Strict => true,
@@ -464,15 +511,37 @@ impl McpServer {
 
                     if self.ctx.hitl_tx.send(hitl_req).await.is_err() {
                         let err_msg = format!(
-                            "File write rejected: Server is running in headless mode without an interactive operator. Modifying '{}' requires interactive approval or '--no-approval' / 'hitl_mode = \"no_approval\"'.",
+                            "Write rejected: Writing to '{}' requires operator approval, but ssh-mcp is running headless. Re-run with '--no-approval' to allow autonomous execution.",
                             path
                         );
                         self.log_and_emit(name, path, risk_tier, "DENIED_HEADLESS", start_time.elapsed().as_millis() as u64, Some(1), 0).await;
                         return ToolCallResult::error(err_msg);
                     }
 
-                    if !matches!(hitl_rx.await, Ok(HitlDecision::ApproveOnce) | Ok(HitlDecision::ApproveSession)) {
-                        return ToolCallResult::error(format!("File write denied by operator: {}", path));
+                    let hitl_timeout = std::time::Duration::from_secs(15);
+                    match tokio::time::timeout(hitl_timeout, hitl_rx).await {
+                        Ok(Ok(HitlDecision::ApproveOnce)) => {
+                            // Proceed
+                        }
+                        Ok(Ok(HitlDecision::ApproveSession)) => {
+                            self.ctx.session_allowed_commands.lock().insert(path.to_string());
+                        }
+                        Ok(Ok(HitlDecision::Deny)) => {
+                            return ToolCallResult::error(format!("File write denied by operator: {}", path));
+                        }
+                        Ok(Err(_)) => {
+                            return ToolCallResult::error("File write approval was aborted.".to_string());
+                        }
+                        Err(_) => {
+                            let err_msg = format!(
+                                "Approval required for writing to '{}'.\n\
+                                 Timed out waiting for operator response in ssh-mcp terminal.\n\
+                                 To approve: press [Y] (once) or [A] (session) in ssh-mcp, or restart with '--no-approval'.",
+                                path
+                            );
+                            self.log_and_emit(name, path, risk_tier, "APPROVAL_TIMEOUT", start_time.elapsed().as_millis() as u64, Some(1), 0).await;
+                            return ToolCallResult::error(err_msg);
+                        }
                     }
                 }
 

@@ -47,7 +47,73 @@ export default function sshExtension(pi: ExtensionAPI) {
     }
   });
 
-  // 2. Register the /ssh slash command
+  // 2. Interactive Human-in-the-Loop (HITL) directly in Pi Agent TUI
+  // Supports: Allow (Approve Once), Allow this Session, Deny
+  const sessionAllowedCommands = new Set<string>();
+
+  pi.on("tool_call", async (event, ctx) => {
+    if (event.toolName === "mcp__ssh__ssh_exec") {
+      const input = event.input as { command?: string; approved?: boolean; allow_session?: boolean };
+      const cmd = (input?.command || "").trim();
+
+      if (!cmd || sessionAllowedCommands.has(cmd) || input.approved) {
+        return;
+      }
+
+      if (isHighRiskCommand(cmd) && ctx.hasUI) {
+        const promptTitle = cmd.length > 90 ? `${cmd.slice(0, 87)}...` : cmd;
+        const options = [
+          "Allow once",
+          "Allow for session",
+          "Deny",
+        ];
+
+        const choice = await ctx.ui.select(`Execute on remote: ${promptTitle}`, options);
+
+        if (choice === "Allow once") {
+          input.approved = true;
+        } else if (choice === "Allow for session") {
+          sessionAllowedCommands.add(cmd);
+          input.approved = true;
+          input.allow_session = true;
+        } else {
+          return {
+            block: true,
+            reason: `Execution denied: ${cmd}`,
+          };
+        }
+      }
+    } else if (event.toolName === "mcp__ssh__ssh_write_file") {
+      const input = event.input as { path?: string; mode?: string; approved?: boolean; allow_session?: boolean };
+      const path = (input?.path || "").trim();
+      const isCritical = path.startsWith("/etc") || path.includes("authorized_keys") || path.startsWith("/boot");
+
+      if (isCritical && !sessionAllowedCommands.has(path) && !input.approved && ctx.hasUI) {
+        const options = [
+          "Allow once",
+          "Allow for session",
+          "Deny",
+        ];
+
+        const choice = await ctx.ui.select(`Write remote file: ${path}`, options);
+
+        if (choice === "Allow once") {
+          input.approved = true;
+        } else if (choice === "Allow for session") {
+          sessionAllowedCommands.add(path);
+          input.approved = true;
+          input.allow_session = true;
+        } else {
+          return {
+            block: true,
+            reason: `Write denied: ${path}`,
+          };
+        }
+      }
+    }
+  });
+
+  // 3. Register the /ssh slash command
   pi.registerCommand("ssh", {
     description: "Manage SSH MCP server, inspect remote system, or execute commands",
     getArgumentCompletions: (prefix) => {
@@ -438,4 +504,15 @@ async function handleInteractiveMenu(
   } else if (selection.startsWith("❌ Disconnect")) {
     handleDisconnect(pi, ctx);
   }
+}
+
+function isHighRiskCommand(cmd: string): boolean {
+  const trimmed = cmd.trim();
+  const highRiskPatterns = [
+    "sudo", "su ", "doas", "rm -r", "rm -f", "--recursive", "reboot", "shutdown",
+    "poweroff", "init 0", "kill", "pkill", "killall", "systemctl stop", "systemctl restart",
+    "systemctl disable", "service ", "iptables", "ufw", "nft", "chmod 777", "-R 777",
+    "chown ", "/etc/shadow", "/etc/passwd", "/etc/sudoers", "authorized_keys"
+  ];
+  return highRiskPatterns.some((pattern) => trimmed.includes(pattern));
 }

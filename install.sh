@@ -4,10 +4,10 @@ set -euo pipefail
 # ==============================================================================
 # SSH-MCP 1-Line Installer for Linux & macOS
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/ayasy-el/ssh-mcp/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/ayasy-el/ssh_mcp/main/install.sh | bash
 # ==============================================================================
 
-REPO="${REPO:-ayasy-el/ssh-mcp}"
+REPO="${REPO:-ayasy-el/ssh_mcp}"
 BINARY_NAME="ssh-mcp"
 
 # Colors

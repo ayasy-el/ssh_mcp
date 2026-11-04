@@ -1,12 +1,12 @@
 # ==============================================================================
 # SSH-MCP 1-Line Installer for Windows (PowerShell)
 # Usage:
-#   irm https://raw.githubusercontent.com/ayasy-el/ssh-mcp/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/ayasy-el/ssh_mcp/main/install.ps1 | iex
 # ==============================================================================
 
 $ErrorActionPreference = "Stop"
 
-$Repo = if ($env:REPO) { $env:REPO } else { "ayasy-el/ssh-mcp" }
+$Repo = if ($env:REPO) { $env:REPO } else { "ayasy-el/ssh_mcp" }
 $BinaryName = "ssh-mcp.exe"
 $Asset = "ssh-mcp-windows-x86_64.zip"
 

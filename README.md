@@ -1,21 +1,48 @@
-# ssh-mcp: SSH & SFTP MCP Server with TUI
+<div align="center">
 
-A Model Context Protocol (MCP) server written in Rust that allows AI coding assistants (such as **Pi Coding Agent**, Claude Desktop, Cursor, and Zed) to execute shell commands, inspect directories, and edit files on remote servers via SSH and SFTP.
+# ssh-mcp
 
-It runs as a **single binary** featuring an interactive **Terminal User Interface (TUI)** by default, supporting secure password entry, live command auditing, approval dialogs, and a background/headless daemon mode (`--background`).
+### SSH & SFTP Model Context Protocol (MCP) Server with Interactive TUI
+
+[![Release](https://img.shields.io/github/v/release/ayasy-el/ssh_mcp?color=7aa2f7&style=flat-square)](https://github.com/ayasy-el/ssh_mcp/releases)
+[![Build](https://img.shields.io/github/actions/workflow/status/ayasy-el/ssh_mcp/release.yml?branch=main&label=CI&style=flat-square)](https://github.com/ayasy-el/ssh_mcp/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-9ece6a.svg?style=flat-square)](LICENSE)
+[![Rust](https://img.shields.io/badge/Rust-1.75%2B-e0af68?logo=rust&logoColor=white&style=flat-square)](Cargo.toml)
+[![MCP](https://img.shields.io/badge/MCP-JSON--RPC%202.0-7dcfff?style=flat-square)](https://modelcontextprotocol.io/)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-bb9af7?style=flat-square)](#-quickstart--installation)
+
+<br />
+
+<img src="docs/demo.gif" alt="ssh-mcp Interactive TUI Demo" width="900" style="max-width: 100%;">
+
+<p>
+  <i>Interactive TUI: Session history selection, masked password entry, live command auditing, and HITL approval dialog.</i>
+</p>
+
+<br />
 
 <p align="center">
-  <img src="docs/demo.gif" alt="ssh-mcp Interactive TUI Demo" width="850">
+  <b>ssh-mcp</b> is a Model Context Protocol (MCP) server written in Rust that allows AI coding assistants (such as <b>Pi Coding Agent</b>, Claude Desktop, Cursor, and Zed) to execute shell commands, inspect directories, and edit files on remote servers via SSH and SFTP.<br /><br />
+  It runs as a <b>single static binary</b> featuring an interactive <b>Terminal User Interface (Ratatui, Tokyo Night)</b> by default, with secure credential handling (memory zeroization), live command auditing, customizable Human-in-the-Loop (HITL) safety tiers, and headless daemon / stdio modes.
 </p>
+
 <p align="center">
-  <i>Interactive TUI: Session history selection, masked password entry, live command monitoring, and HITL approval dialog.</i>
+  <a href="#-features">Features</a> •
+  <a href="#-quickstart--installation">Quickstart</a> •
+  <a href="#-connecting-to-ai-agents">Connecting Agents</a> •
+  <a href="#-example-prompts">Example Prompts</a> •
+  <a href="#-tui-dashboard--keybindings">Keybindings</a> •
+  <a href="#-security-policies--custom-rules">Security & HITL</a> •
+  <a href="#-cli-reference">CLI Reference</a>
 </p>
+
+</div>
 
 ---
 
 ## ✨ Features
 
-* 🖥️ **Interactive Terminal UI:** Built with Ratatui. Enter credentials securely with masked typing (`••••`), monitor remote server resource usage, and inspect agent activity in real time.
+* 🖥️ **Interactive Terminal UI:** Built with Ratatui in a Tokyo Night palette. Enter credentials securely with masked typing (`••••`), monitor remote server resource usage, and inspect agent activity in real time.
 * 🕒 **Session History:** Automatically saves connection targets (host, port, username, auth method) after each successful session. Instantly select from recent sessions with `[Space]` or `[←]`/`[→]`—no need to re-type or edit config files, while passwords remain strictly manual.
 * 🛡️ **SSH Security & Credential Hygiene:**
   * **Known Hosts & TOFU:** Checks `~/.ssh/known_hosts`. Prompts an interactive Trust-On-First-Use (TOFU) SHA-256 fingerprint verification dialog before connecting to unknown hosts. Aborts immediately if host keys change.
@@ -50,20 +77,20 @@ Pre-built binaries are available for Linux, macOS, and Windows via GitHub Releas
 
 #### Linux & macOS:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ayasy-el/ssh-mcp/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ayasy-el/ssh_mcp/main/install.sh | bash
 ```
 *Detects your OS and architecture, downloads the release binary to `~/.local/bin`, and configures Pi Coding Agent integrations.*
 
 #### Windows (PowerShell):
 ```powershell
-irm https://raw.githubusercontent.com/ayasy-el/ssh-mcp/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/ayasy-el/ssh_mcp/main/install.ps1 | iex
 ```
 
 ---
 
 ### 2. 📦 Manual Download from GitHub Releases
 
-Download the archive matching your platform from the [Releases Page](https://github.com/ayasy-el/ssh-mcp/releases):
+Download the archive matching your platform from the [Releases Page](https://github.com/ayasy-el/ssh_mcp/releases):
 
 | Platform | Architecture | Archive |
 |---|---|---|
@@ -82,8 +109,8 @@ Extract the archive and place `ssh-mcp` (or `ssh-mcp.exe` on Windows) in your sy
 Requirements: Rust toolchain 1.75+ (`cargo` and `rustc`).
 
 ```bash
-git clone https://github.com/ayasy-el/ssh-mcp.git
-cd ssh-mcp
+git clone https://github.com/ayasy-el/ssh_mcp.git
+cd ssh_mcp
 cargo build --release
 # Compiled binary located at: target/release/ssh-mcp
 ```
@@ -140,7 +167,9 @@ If you prefer declaring the server statically in `mcp.json`:
   ```
 *(Note: If configured statically in `mcp.json`, Pi will warn you if the server is offline when starting a session).*
 
-### D. Claude Desktop
+---
+
+### C. Claude Desktop
 Add the server entry to `~/.config/Claude/claude_desktop_config.json` (or `%APPDATA%\Claude\claude_desktop_config.json` on Windows):
 ```json
 {
@@ -152,7 +181,9 @@ Add the server entry to `~/.config/Claude/claude_desktop_config.json` (or `%APPD
 }
 ```
 
-### E. Cursor & Zed
+---
+
+### D. Cursor & Zed
 * **Cursor:** Navigate to Settings ➔ Features ➔ MCP Servers ➔ Add Server (Type: `SSE` or `HTTP`, URL: `http://127.0.0.1:8765/mcp`).
 * **Zed:** Add the server configuration to your `settings.json` under `context_servers`:
   ```json
@@ -165,33 +196,33 @@ Add the server entry to `~/.config/Claude/claude_desktop_config.json` (or `%APPD
 
 ---
 
-## 💡 Example Prompts for Pi Coding Agent
+## 💡 Example Prompts
 
-Once connected, Pi has full access to the SSH & SFTP tool suite. Here are practical prompt examples:
+Once connected, your AI assistant has full access to the SSH & SFTP tool suite:
 
 ### 1. Server Health & Architecture Inspection
 > **Prompt:** *"Check the health of our remote server. What OS is it running, how much RAM is free, and is root disk usage okay?"*
-* **Tools invoked by Pi:** `ssh_system_info`
-* **Result:** Pi receives structured OS release, kernel, CPU cores, RAM, and disk metrics in a single call without wasting shell execution tokens.
+* **Tools invoked by agent:** `ssh_system_info`
+* **Result:** Agent receives structured OS release, kernel, CPU cores, RAM, and disk metrics in a single call without wasting shell execution tokens.
 
 ### 2. Remote Directory Navigation & Log Analysis
 > **Prompt:** *"List the contents of `/var/log/nginx/` and check the last 50 lines of the error log."*
-* **Tools invoked by Pi:** `ssh_list_dir` (inspects directory metadata), followed by `ssh_read_file` or `ssh_exec` with `tail -n 50`.
+* **Tools invoked by agent:** `ssh_list_dir` (inspects directory metadata), followed by `ssh_read_file` or `ssh_exec` with `tail -n 50`.
 * **Safety:** Automatically classified as `[SAFE]` — executes immediately.
 
 ### 3. Remote File Editing via SFTP
 > **Prompt:** *"Inspect `/etc/nginx/sites-available/default` and update the client_max_body_size setting to 50M."*
-* **Tools invoked by Pi:** `ssh_read_file` (fetches existing configuration), followed by `ssh_write_file` (writes updated configuration via SFTP).
-* **Safety:** If in `High-Risk HITL` mode, writing to `/etc/*` will trigger an approval dialog on your TUI. In `Autonomous` mode, it applies immediately.
+* **Tools invoked by agent:** `ssh_read_file` (fetches existing configuration), followed by `ssh_write_file` (writes updated configuration via SFTP).
+* **Safety:** If in `High-Risk HITL` mode, writing to `/etc/*` triggers an approval dialog on your TUI. In `Autonomous` mode, it applies immediately.
 
 ### 4. Git Repository & Deployment Workflows
 > **Prompt:** *"Go to `/var/www/my-app`, pull the latest main branch, and restart the systemd service."*
-* **Tools invoked by Pi:** `ssh_exec` with `cwd: "/var/www/my-app"` running `git pull origin main`, followed by `sudo systemctl restart my-app`.
+* **Tools invoked by agent:** `ssh_exec` with `cwd: "/var/www/my-app"` running `git pull origin main`, followed by `sudo systemctl restart my-app`.
 * **Safety:** `git pull` runs automatically (`[MUTATE]`). `sudo systemctl` triggers a `[HIGH RISK]` approval popup in the TUI (or runs directly if in `Autonomous` mode).
 
 ### 5. Process Monitoring & Troubleshooting
 > **Prompt:** *"Check which process is consuming the most memory on the remote server and kill it if it's orphaned."*
-* **Tools invoked by Pi:** `ssh_exec` with `ps aux --sort=-%mem | head -n 10`. If a `kill` command is generated, it is classified as `[HIGH RISK]` and prompts for operator confirmation.
+* **Tools invoked by agent:** `ssh_exec` with `ps aux --sort=-%mem | head -n 10`. If a `kill` command is generated, it is classified as `[HIGH RISK]` and prompts for operator confirmation.
 
 ---
 
@@ -276,7 +307,7 @@ auth_method = "agent"   # Options: "password", "key", "agent"
 
 ---
 
-## 🛠️ CLI Options
+## 🛠️ CLI Reference
 
 ```text
 Usage: ssh-mcp [OPTIONS]
@@ -301,6 +332,18 @@ Options:
 
 ---
 
+## 🤝 Contributing
+
+Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/ayasy-el/ssh_mcp/issues).
+
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feat/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'feat: Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feat/AmazingFeature`)
+5. Open a Pull Request
+
+---
+
 ## 📄 License
 
-MIT License. See [LICENSE](LICENSE) for details.
+Distributed under the MIT License. See [LICENSE](LICENSE) for more information.

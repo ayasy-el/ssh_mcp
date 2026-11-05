@@ -303,7 +303,7 @@ fn render_dashboard_screen(f: &mut Frame, app: &App) {
         .split(chunks[0]);
 
     let title_p = Paragraph::new(Span::styled(
-        " SSH-MCP SERVER v0.1.0 ",
+        concat!(" SSH-MCP SERVER v", env!("CARGO_PKG_VERSION"), " "),
         Style::default().fg(tokyo_night::CYAN).add_modifier(Modifier::BOLD),
     ))
     .block(Block::default().borders(Borders::ALL).style(Style::default().fg(tokyo_night::BLUE)));

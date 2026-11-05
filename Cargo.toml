@@ -1,6 +1,6 @@
 [package]
 name = "ssh-mcp"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["ayasy-el"]
 description = "SSH & SFTP Model Context Protocol (MCP) server with TUI dashboard and command controls"

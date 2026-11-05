@@ -64,12 +64,13 @@ jobs:
           perl-version: '5.38'
           distribution: strawberry
 
-      # Windows: Disable assembly routines in openssl-src to avoid NASM dependency
+      # Windows: Disable assembly routines in openssl-src and remove Git Bash's minimal perl
       - name: Setup Windows Environment
         if: matrix.os == 'windows-latest'
         shell: bash
         run: |
           echo "OPENSSL_NO_ASM=1" >> $GITHUB_ENV
+          rm -f /usr/bin/perl.exe /usr/bin/perl 2>/dev/null || true
 
       # Linux: Host build dependencies
       - name: Install Linux build dependencies
@@ -83,7 +84,8 @@ jobs:
         if: matrix.use_cross
         uses: taiki-e/install-action@cross
 
-      - name: Build binary
+      - name: Build binary (Unix)
+        if: matrix.os != 'windows-latest'
         shell: bash
         run: |
           if [ "${{ matrix.use_cross }}" = "true" ]; then
@@ -91,6 +93,13 @@ jobs:
           else
             cargo build --release --target ${{ matrix.target }}
           fi
+
+      - name: Build binary (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $env:PATH = "C:\Strawberry\perl\bin;C:\Strawberry\c\bin;" + $env:PATH
+          cargo build --release --target ${{ matrix.target }}
 
       - name: Package release assets (Unix)
         if: matrix.os != 'windows-latest'

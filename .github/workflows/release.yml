@@ -29,7 +29,7 @@ jobs:
             archive_ext: tar.gz
             use_cross: true
 
-          - os: macos-13
+          - os: macos-latest
             target: x86_64-apple-darwin
             artifact_name: ssh-mcp-macos-x86_64
             archive_ext: tar.gz
@@ -56,16 +56,32 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      # Windows: Setup Strawberry Perl (provides full Perl with Locale::Maketext::Simple)
+      - name: Setup Strawberry Perl (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: shogo82148/actions-setup-perl@v1
+        with:
+          perl-version: '5.38'
+          distribution: strawberry
+
+      # Windows: Disable assembly routines in openssl-src to avoid NASM dependency
+      - name: Setup Windows Environment
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          echo "OPENSSL_NO_ASM=1" >> $GITHUB_ENV
+
+      # Linux: Host build dependencies
       - name: Install Linux build dependencies
         if: matrix.os == 'ubuntu-latest' && !matrix.use_cross
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev
 
+      # Linux ARM64: Fast prebuilt cross installation
       - name: Install Cross for ARM64 Linux
         if: matrix.use_cross
-        run: |
-          cargo install cross --git https://github.com/cross-rs/cross
+        uses: taiki-e/install-action@cross
 
       - name: Build binary
         shell: bash
@@ -76,7 +92,7 @@ jobs:
             cargo build --release --target ${{ matrix.target }}
           fi
 
-      - name: Package release archive (Unix)
+      - name: Package release assets (Unix)
         if: matrix.os != 'windows-latest'
         shell: bash
         run: |
@@ -87,28 +103,50 @@ jobs:
           cd package
           tar -czvf "../${{ matrix.artifact_name }}.${{ matrix.archive_ext }}" *
           cd ..
-          shasum -a 256 "${{ matrix.artifact_name }}.${{ matrix.archive_ext }}" > "${{ matrix.artifact_name }}.${{ matrix.archive_ext }}.sha256"
 
-      - name: Package release archive (Windows)
+          # Direct standalone binary
+          cp "${BIN_DIR}/ssh-mcp" "./${{ matrix.artifact_name }}"
+          chmod +x "./${{ matrix.artifact_name }}"
+
+          # Compute SHA-256 Checksums
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${{ matrix.artifact_name }}.${{ matrix.archive_ext }}" > "${{ matrix.artifact_name }}.${{ matrix.archive_ext }}.sha256"
+            sha256sum "${{ matrix.artifact_name }}" > "${{ matrix.artifact_name }}.sha256"
+          else
+            shasum -a 256 "${{ matrix.artifact_name }}.${{ matrix.archive_ext }}" > "${{ matrix.artifact_name }}.${{ matrix.archive_ext }}.sha256"
+            shasum -a 256 "${{ matrix.artifact_name }}" > "${{ matrix.artifact_name }}.sha256"
+          fi
+
+      - name: Package release assets (Windows)
         if: matrix.os == 'windows-latest'
         shell: bash
         run: |
           BIN_DIR="target/${{ matrix.target }}/release"
           mkdir -p package
           cp "${BIN_DIR}/ssh-mcp.exe" package/
-          cp README.md config.example.toml package/ 2>/dev/null || true
+          cp README.md LICENSE config.example.toml package/ 2>/dev/null || true
           cd package
           7z a "../${{ matrix.artifact_name }}.${{ matrix.archive_ext }}" *
           cd ..
-          sha256sum "${{ matrix.artifact_name }}.${{ matrix.archive_ext }}" > "${{ matrix.artifact_name }}.${{ matrix.archive_ext }}.sha256"
+
+          # Direct standalone executable (.exe)
+          cp "${BIN_DIR}/ssh-mcp.exe" "./${{ matrix.artifact_name }}.exe"
+
+          # Compute SHA-256 Checksums
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${{ matrix.artifact_name }}.${{ matrix.archive_ext }}" > "${{ matrix.artifact_name }}.${{ matrix.archive_ext }}.sha256"
+            sha256sum "${{ matrix.artifact_name }}.exe" > "${{ matrix.artifact_name }}.exe.sha256"
+          else
+            shasum -a 256 "${{ matrix.artifact_name }}.${{ matrix.archive_ext }}" > "${{ matrix.artifact_name }}.${{ matrix.archive_ext }}.sha256"
+            shasum -a 256 "${{ matrix.artifact_name }}.exe" > "${{ matrix.artifact_name }}.exe.sha256"
+          fi
 
       - name: Upload Artifacts to Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            ${{ matrix.artifact_name }}.${{ matrix.archive_ext }}
-            ${{ matrix.artifact_name }}.${{ matrix.archive_ext }}.sha256
+            ${{ matrix.artifact_name }}*
           draft: false
           prerelease: false
           generate_release_notes: true

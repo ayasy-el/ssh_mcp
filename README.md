@@ -90,17 +90,18 @@ irm https://raw.githubusercontent.com/ayasy-el/ssh_mcp/main/install.ps1 | iex
 
 ### 2. 📦 Manual Download from GitHub Releases
 
-Download the archive matching your platform from the [Releases Page](https://github.com/ayasy-el/ssh_mcp/releases):
+Pre-compiled standalone executables and package archives are available on the [Releases Page](https://github.com/ayasy-el/ssh_mcp/releases):
 
-| Platform | Architecture | Archive |
-|---|---|---|
-| **Linux** | x86_64 (Intel/AMD) | `ssh-mcp-linux-x86_64.tar.gz` |
-| **Linux** | ARM64 / aarch64 | `ssh-mcp-linux-aarch64.tar.gz` |
-| **macOS** | Apple Silicon (M1/M2/M3/M4) | `ssh-mcp-macos-arm64.tar.gz` |
-| **macOS** | Intel | `ssh-mcp-macos-x86_64.tar.gz` |
-| **Windows** | x86_64 | `ssh-mcp-windows-x86_64.zip` |
+| Platform | Architecture | Direct Executable | Package Archive |
+|---|---|---|---|
+| **Windows** | x86_64 | `ssh-mcp-windows-x86_64.exe` | `ssh-mcp-windows-x86_64.zip` |
+| **macOS** | Apple Silicon (M1/M2/M3/M4) | `ssh-mcp-macos-arm64` | `ssh-mcp-macos-arm64.tar.gz` |
+| **macOS** | Intel | `ssh-mcp-macos-x86_64` | `ssh-mcp-macos-x86_64.tar.gz` |
+| **Linux** | x86_64 (Intel/AMD) | `ssh-mcp-linux-x86_64` | `ssh-mcp-linux-x86_64.tar.gz` |
+| **Linux** | ARM64 / aarch64 | `ssh-mcp-linux-aarch64` | `ssh-mcp-linux-aarch64.tar.gz` |
 
-Extract the archive and place `ssh-mcp` (or `ssh-mcp.exe` on Windows) in your system `PATH` (such as `~/.local/bin` or `/usr/local/bin`).
+* **Windows Users:** You can download `ssh-mcp-windows-x86_64.exe` directly and run it from PowerShell/CMD without extracting any archive!
+* **macOS & Linux Users:** Download the direct binary (or `.tar.gz`), run `chmod +x ssh-mcp*`, and place it in your `$PATH` (`~/.local/bin/ssh-mcp`). Alternatively, use the automated one-line installer above.
 
 ---
 

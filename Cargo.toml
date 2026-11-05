@@ -44,9 +44,5 @@ async-trait = "0.1"
 uuid = { version = "1.11", features = ["v4"] }
 shlex = "2.0"
 
-# Target-specific SSH Engine (Windows uses vendored OpenSSL for seamless cross-compilation)
-[target.'cfg(windows)'.dependencies]
+# SSH Engine (Vendored OpenSSL for seamless portable builds across Linux, macOS, and Windows)
 ssh2 = { version = "0.9.6", features = ["vendored-openssl"] }
-
-[target.'cfg(not(windows))'.dependencies]
-ssh2 = "0.9.6"

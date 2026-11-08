@@ -7,6 +7,9 @@ interface HealthResponse {
   connected: boolean;
   remote_host: string;
   mcp_spec: string;
+  policy?: string;
+  mode?: string;
+  autonomous?: boolean;
 }
 
 function normalizeBaseUrl(input: string): string {
@@ -27,6 +30,37 @@ const DEFAULT_BASE_URL = `http://${DEFAULT_MCP_HOST}:${DEFAULT_MCP_PORT}`;
 
 export default function sshExtension(pi: ExtensionAPI) {
   let activeUrl = DEFAULT_BASE_URL;
+  let cachedAutonomous = false;
+  let lastPolicyCheck = 0;
+
+  async function isAutonomousPolicy(baseUrl: string): Promise<boolean> {
+    const now = Date.now();
+    if (now - lastPolicyCheck < 1500) {
+      return cachedAutonomous;
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 350);
+      const res = await fetch(`${baseUrl}/policy`, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (res.ok) {
+        const data: any = await res.json();
+        lastPolicyCheck = now;
+        cachedAutonomous =
+          data.autonomous === true ||
+          data.mode === "autonomous" ||
+          String(data.policy || "").toLowerCase().includes("autonomous") ||
+          String(data.policy || "").toLowerCase().includes("no approval") ||
+          String(data.policy || "").toLowerCase().includes("no_approval") ||
+          String(data.policy || "").toLowerCase().includes("no-approval");
+        return cachedAutonomous;
+      }
+    } catch {
+      // Fallback to cached state
+    }
+    return cachedAutonomous;
+  }
 
   // 1. Auto-discover SSH MCP server on session start (Zero-Noise: silent when offline)
   pi.on("session_start", async (_event, ctx) => {
@@ -34,6 +68,13 @@ export default function sshExtension(pi: ExtensionAPI) {
       const health = await fetchHealth(activeUrl);
       if (health && health.status === "ok") {
         registerServer(pi, activeUrl);
+        if (health.autonomous !== undefined) {
+          cachedAutonomous = health.autonomous;
+        } else if (health.mode === "autonomous" || String(health.policy || "").toLowerCase().includes("autonomous")) {
+          cachedAutonomous = true;
+        }
+        lastPolicyCheck = Date.now();
+
         if (health.connected) {
           ctx.ui.setStatus("ssh", `SSH: 🟢 ${health.remote_host}`);
         } else {
@@ -52,7 +93,20 @@ export default function sshExtension(pi: ExtensionAPI) {
   const sessionAllowedCommands = new Set<string>();
 
   pi.on("tool_call", async (event, ctx) => {
-    if (event.toolName === "mcp__ssh__ssh_exec") {
+    const isSshExec = event.toolName === "mcp__ssh__ssh_exec" || event.toolName === "ssh_exec" || event.toolName === "ssh/ssh_exec";
+    const isSshWrite = event.toolName === "mcp__ssh__ssh_write_file" || event.toolName === "ssh_write_file" || event.toolName === "ssh/ssh_write_file";
+
+    if (!isSshExec && !isSshWrite) {
+      return;
+    }
+
+    // ⚡ Autonomous Mode Check:
+    // If the server is in Autonomous / No-Approval mode, DO NOT ASK! Execute immediately.
+    if (await isAutonomousPolicy(activeUrl)) {
+      return;
+    }
+
+    if (isSshExec) {
       const input = event.input as { command?: string; approved?: boolean; allow_session?: boolean };
       const cmd = (input?.command || "").trim();
 
@@ -83,7 +137,7 @@ export default function sshExtension(pi: ExtensionAPI) {
           };
         }
       }
-    } else if (event.toolName === "mcp__ssh__ssh_write_file") {
+    } else if (isSshWrite) {
       const input = event.input as { path?: string; mode?: string; approved?: boolean; allow_session?: boolean };
       const path = (input?.path || "").trim();
       const isCritical = path.startsWith("/etc") || path.includes("authorized_keys") || path.startsWith("/boot");

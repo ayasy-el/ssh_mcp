@@ -60,7 +60,7 @@ pub enum HitlMode {
     HighRisk,
     Strict,
     ReadOnly,
-    #[serde(alias = "audit_only", alias = "no_approval", alias = "auto", alias = "unrestricted")]
+    #[serde(alias = "audit_only", alias = "no_approval", alias = "no-approval", alias = "noapproval", alias = "auto", alias = "unrestricted", alias = "none")]
     Autonomous,
 }
 
@@ -240,6 +240,14 @@ mod tests {
         struct Wrapper { hitl_mode: HitlMode }
         let w: Wrapper = toml::from_str(toml_auto).unwrap();
         assert_eq!(w.hitl_mode, HitlMode::Autonomous);
+
+        let toml_dash = r#"hitl_mode = "no-approval""#;
+        let wd: Wrapper = toml::from_str(toml_dash).unwrap();
+        assert_eq!(wd.hitl_mode, HitlMode::Autonomous);
+
+        let toml_none = r#"hitl_mode = "none""#;
+        let wn: Wrapper = toml::from_str(toml_none).unwrap();
+        assert_eq!(wn.hitl_mode, HitlMode::Autonomous);
 
         let toml_audit = r#"hitl_mode = "audit_only""#;
         let w2: Wrapper = toml::from_str(toml_audit).unwrap();

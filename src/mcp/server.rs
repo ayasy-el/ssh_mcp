@@ -717,7 +717,14 @@ async fn handle_health(State(server): State<McpServer>) -> impl IntoResponse {
         "connected": client_connected,
         "remote_host": host_info,
         "mcp_spec": "2024-11-05",
-        "policy": current_policy.display_label()
+        "policy": current_policy.display_label(),
+        "mode": match current_policy {
+            HitlMode::Autonomous => "autonomous",
+            HitlMode::HighRisk => "high_risk",
+            HitlMode::Strict => "strict",
+            HitlMode::ReadOnly => "read_only",
+        },
+        "autonomous": current_policy == HitlMode::Autonomous
     }))
 }
 
@@ -731,7 +738,14 @@ async fn handle_get_policy(State(server): State<McpServer>) -> impl IntoResponse
     let mode = server.ctx.config.read().security.hitl_mode;
     Json(json!({
         "status": "ok",
-        "policy": mode.display_label()
+        "policy": mode.display_label(),
+        "mode": match mode {
+            HitlMode::Autonomous => "autonomous",
+            HitlMode::HighRisk => "high_risk",
+            HitlMode::Strict => "strict",
+            HitlMode::ReadOnly => "read_only",
+        },
+        "autonomous": mode == HitlMode::Autonomous
     }))
 }
 
@@ -743,7 +757,7 @@ async fn handle_set_policy(
     let mode = match payload.mode.to_lowercase().as_str() {
         "strict" => HitlMode::Strict,
         "read_only" | "readonly" => HitlMode::ReadOnly,
-        "autonomous" | "no_approval" | "no-approval" | "auto" | "audit_only" | "unrestricted" => {
+        "autonomous" | "no_approval" | "no-approval" | "noapproval" | "auto" | "audit_only" | "unrestricted" | "none" => {
             HitlMode::Autonomous
         }
         _ => HitlMode::HighRisk,
@@ -751,6 +765,13 @@ async fn handle_set_policy(
     server.update_policy_mode(mode);
     Json(json!({
         "status": "ok",
-        "policy": mode.display_label()
+        "policy": mode.display_label(),
+        "mode": match mode {
+            HitlMode::Autonomous => "autonomous",
+            HitlMode::HighRisk => "high_risk",
+            HitlMode::Strict => "strict",
+            HitlMode::ReadOnly => "read_only",
+        },
+        "autonomous": mode == HitlMode::Autonomous
     }))
 }

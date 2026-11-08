@@ -111,7 +111,7 @@ async fn main() -> Result<()> {
         config.security.hitl_mode = match pol.to_lowercase().as_str() {
             "strict" => HitlMode::Strict,
             "read_only" | "readonly" => HitlMode::ReadOnly,
-            "autonomous" | "no_approval" | "no-approval" | "audit_only" | "auditonly" | "auto" | "unrestricted" => {
+            "autonomous" | "no_approval" | "no-approval" | "noapproval" | "audit_only" | "auditonly" | "auto" | "unrestricted" | "none" => {
                 HitlMode::Autonomous
             }
             _ => HitlMode::HighRisk,

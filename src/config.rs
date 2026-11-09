@@ -104,6 +104,8 @@ pub struct SecurityConfig {
     pub audit_log_path: String,
     #[serde(default)]
     pub tofu_auto_accept: bool,
+    #[serde(default)]
+    pub accept_host_key_changes: bool,
     #[serde(default = "default_true")]
     pub mask_secrets: bool,
     #[serde(default = "default_forbidden")]
@@ -153,6 +155,7 @@ impl Default for SecurityConfig {
             max_output_lines: default_max_lines(),
             audit_log_path: default_audit_path(),
             tofu_auto_accept: false,
+            accept_host_key_changes: false,
             mask_secrets: default_true(),
             forbidden_commands: default_forbidden(),
             high_risk_commands: Vec::new(),

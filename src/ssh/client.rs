@@ -30,11 +30,15 @@ pub enum HostKeyStatus {
         fingerprint_sha256: String,
         raw_key: Vec<u8>,
         key_type: ssh2::HostKeyType,
+        key_type_name: String,
     },
     Mismatch {
         host: String,
         port: u16,
         fingerprint_sha256: String,
+        raw_key: Vec<u8>,
+        key_type: ssh2::HostKeyType,
+        key_type_name: String,
     },
 }
 
@@ -93,6 +97,46 @@ pub struct RemoteSysInfo {
     pub uptime: String,
 }
 
+/// Encodes raw bytes to RFC 4648 standard base64 string.
+/// If `pad` is false, trailing '=' padding is omitted (OpenSSH standard for SHA-256 fingerprints).
+pub fn base64_encode(bytes: &[u8], pad: bool) -> String {
+    const CHARSET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((bytes.len() * 4 + 2) / 3 + 2);
+    let mut i = 0;
+    while i < bytes.len() {
+        let b0 = bytes[i];
+        let b1 = if i + 1 < bytes.len() { bytes[i + 1] } else { 0 };
+        let b2 = if i + 2 < bytes.len() { bytes[i + 2] } else { 0 };
+
+        out.push(CHARSET[(b0 >> 2) as usize] as char);
+        out.push(CHARSET[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize] as char);
+        if i + 1 < bytes.len() {
+            out.push(CHARSET[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char);
+        } else if pad {
+            out.push('=');
+        }
+        if i + 2 < bytes.len() {
+            out.push(CHARSET[(b2 & 0x3f) as usize] as char);
+        } else if pad {
+            out.push('=');
+        }
+        i += 3;
+    }
+    out
+}
+
+pub fn host_key_type_name(key_type: ssh2::HostKeyType) -> &'static str {
+    match key_type {
+        ssh2::HostKeyType::Rsa => "RSA",
+        ssh2::HostKeyType::Dss => "DSA",
+        ssh2::HostKeyType::Ecdsa256 => "ECDSA (256-bit)",
+        ssh2::HostKeyType::Ecdsa384 => "ECDSA (384-bit)",
+        ssh2::HostKeyType::Ecdsa521 => "ECDSA (521-bit)",
+        ssh2::HostKeyType::Ed25519 => "ED25519",
+        ssh2::HostKeyType::Unknown => "Unknown",
+    }
+}
+
 pub struct SshClient {
     session: Arc<Mutex<Session>>,
     host: String,
@@ -112,27 +156,68 @@ impl SshClient {
 
         let mut session = Session::new().context("Failed to create SSH session")?;
         session.set_tcp_stream(tcp);
+
+        // Align HostKey algorithm preference with OpenSSH client default
+        // (OpenSSH prioritizes ED25519, then ECDSA, then RSA):
+        let _ = session.method_pref(
+            ssh2::MethodType::HostKey,
+            "ssh-ed25519,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,rsa-sha2-512,rsa-sha2-256,ssh-rsa",
+        );
+
         session.handshake().context("SSH handshake failed")?;
 
-        // Calculate SHA-256 fingerprint
+        // Calculate standard OpenSSH SHA-256 fingerprint (Base64 without padding)
         let (raw_key, key_type) = session
             .host_key()
             .ok_or_else(|| anyhow!("Remote server did not provide a host key"))?;
         let mut hasher = Sha256::new();
         hasher.update(raw_key);
-        let fingerprint = format!("SHA256:{}", hex::encode(hasher.finalize()));
+        let digest = hasher.finalize();
+        let fingerprint = format!("SHA256:{}", base64_encode(&digest, false));
+        let type_name = host_key_type_name(key_type).to_string();
 
-        // Check known_hosts
-        let known_hosts_path = dirs::home_dir()
-            .map(|h| h.join(".ssh").join("known_hosts"))
-            .unwrap_or_else(|| PathBuf::from("known_hosts"));
-
+        // Check known_hosts across standard paths:
+        // 1. ~/.ssh/known_hosts & ~/.ssh/known_hosts2
+        // 2. ~/.ssh/known_hosts.d/* (Ubuntu 24.04 / 26.04 / OpenSSH 9.8+ directory format)
+        // 3. /etc/ssh/ssh_known_hosts & /etc/ssh/ssh_known_hosts2
         let mut known_hosts = session.known_hosts()?;
-        if known_hosts_path.is_file() {
-            let _ = known_hosts.read_file(&known_hosts_path, KnownHostFileKind::OpenSSH);
+        if let Some(home) = dirs::home_dir() {
+            let user_kh = home.join(".ssh").join("known_hosts");
+            if user_kh.is_file() {
+                let _ = known_hosts.read_file(&user_kh, KnownHostFileKind::OpenSSH);
+            }
+            let user_kh2 = home.join(".ssh").join("known_hosts2");
+            if user_kh2.is_file() {
+                let _ = known_hosts.read_file(&user_kh2, KnownHostFileKind::OpenSSH);
+            }
+            let kh_d = home.join(".ssh").join("known_hosts.d");
+            if kh_d.is_dir() {
+                if let Ok(entries) = std::fs::read_dir(kh_d) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_file() {
+                            let _ = known_hosts.read_file(&path, KnownHostFileKind::OpenSSH);
+                        }
+                    }
+                }
+            }
+        }
+        for sys_kh in &["/etc/ssh/ssh_known_hosts", "/etc/ssh/ssh_known_hosts2"] {
+            let p = Path::new(sys_kh);
+            if p.is_file() {
+                let _ = known_hosts.read_file(p, KnownHostFileKind::OpenSSH);
+            }
         }
 
-        let check_res = known_hosts.check_port(host, port, raw_key);
+        let mut check_res = known_hosts.check_port(host, port, raw_key);
+        // If not found or mismatch on standard port 22, also check plain hostname without port brackets
+        if matches!(check_res, CheckResult::NotFound | CheckResult::Mismatch) && port == 22 {
+            let alt_res = known_hosts.check(host, raw_key);
+            if matches!(alt_res, CheckResult::Match) {
+                check_res = CheckResult::Match;
+            }
+        }
+
         let status = match check_res {
             CheckResult::Match => HostKeyStatus::Trusted,
             CheckResult::NotFound => HostKeyStatus::NewHost {
@@ -141,11 +226,15 @@ impl SshClient {
                 fingerprint_sha256: fingerprint,
                 raw_key: raw_key.to_vec(),
                 key_type,
+                key_type_name: type_name,
             },
             CheckResult::Mismatch => HostKeyStatus::Mismatch {
                 host: host.to_string(),
                 port,
                 fingerprint_sha256: fingerprint,
+                raw_key: raw_key.to_vec(),
+                key_type,
+                key_type_name: type_name,
             },
             CheckResult::Failure => {
                 return Err(anyhow!("Failed while checking known_hosts file"));
@@ -155,7 +244,8 @@ impl SshClient {
         Ok((session, status))
     }
 
-    /// Saves a newly accepted host key into ~/.ssh/known_hosts
+    /// Saves or updates an accepted host key into ~/.ssh/known_hosts.
+    /// If an old entry for this host exists, it purges the old entry to prevent conflicting records.
     pub fn save_known_host(
         session: &Session,
         host: &str,
@@ -171,17 +261,44 @@ impl SshClient {
             std::fs::create_dir_all(parent)?;
         }
 
-        let mut known_hosts = session.known_hosts()?;
-        if known_hosts_path.is_file() {
-            let _ = known_hosts.read_file(&known_hosts_path, KnownHostFileKind::OpenSSH);
-        }
-
-        // Add with custom port formatting if not standard 22
         let host_pattern = if port == 22 {
             host.to_string()
         } else {
             format!("[{}]:{}", host, port)
         };
+
+        // If file exists, purge existing conflicting entries for this host
+        if known_hosts_path.is_file() {
+            // First try invoking `ssh-keygen -R <host_pattern>` if available (safely handles hashed and plain entries)
+            let _ = std::process::Command::new("ssh-keygen")
+                .args(["-R", &host_pattern, "-f", known_hosts_path.to_str().unwrap_or("~/.ssh/known_hosts")])
+                .output();
+
+            // Also clean up any plain text occurrences directly from file just in case
+            if let Ok(content) = std::fs::read_to_string(&known_hosts_path) {
+                let filtered: Vec<&str> = content
+                    .lines()
+                    .filter(|line| {
+                        let trimmed = line.trim();
+                        if trimmed.is_empty() || trimmed.starts_with('#') {
+                            return true;
+                        }
+                        let first_token = trimmed.split_whitespace().next().unwrap_or("");
+                        first_token != host && first_token != host_pattern && !first_token.starts_with(&format!("{},", host))
+                    })
+                    .collect();
+                let mut new_content = filtered.join("\n");
+                if !new_content.is_empty() {
+                    new_content.push('\n');
+                }
+                let _ = std::fs::write(&known_hosts_path, new_content);
+            }
+        }
+
+        let mut known_hosts = session.known_hosts()?;
+        if known_hosts_path.is_file() {
+            let _ = known_hosts.read_file(&known_hosts_path, KnownHostFileKind::OpenSSH);
+        }
 
         let fmt = match key_type {
             ssh2::HostKeyType::Rsa => ssh2::KnownHostKeyFormat::SshRsa,
@@ -591,5 +708,49 @@ impl SshClient {
             disk_root_pct,
             uptime,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_base64_encode_unpadded() {
+        // Known test vectors for RFC 4648
+        assert_eq!(base64_encode(b"", false), "");
+        assert_eq!(base64_encode(b"f", false), "Zg");
+        assert_eq!(base64_encode(b"fo", false), "Zm8");
+        assert_eq!(base64_encode(b"foo", false), "Zm9v");
+        assert_eq!(base64_encode(b"foob", false), "Zm9vYg");
+        assert_eq!(base64_encode(b"fooba", false), "Zm9vYmE");
+        assert_eq!(base64_encode(b"foobar", false), "Zm9vYmFy");
+
+        // Padded
+        assert_eq!(base64_encode(b"f", true), "Zg==");
+        assert_eq!(base64_encode(b"fo", true), "Zm8=");
+        assert_eq!(base64_encode(b"foo", true), "Zm9v");
+    }
+
+    #[test]
+    fn test_openssh_sha256_fingerprint_format() {
+        let dummy_raw_key = b"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI dummy";
+        let mut hasher = Sha256::new();
+        hasher.update(dummy_raw_key);
+        let digest = hasher.finalize();
+        let fp = format!("SHA256:{}", base64_encode(&digest, false));
+
+        // OpenSSH SHA256 fingerprints are 43 characters (32 bytes unpadded base64) preceded by "SHA256:"
+        assert!(fp.starts_with("SHA256:"));
+        let b64_part = &fp["SHA256:".len()..];
+        assert_eq!(b64_part.len(), 43);
+        assert!(!b64_part.contains('='));
+    }
+
+    #[test]
+    fn test_host_key_type_naming() {
+        assert_eq!(host_key_type_name(ssh2::HostKeyType::Ed25519), "ED25519");
+        assert_eq!(host_key_type_name(ssh2::HostKeyType::Rsa), "RSA");
+        assert_eq!(host_key_type_name(ssh2::HostKeyType::Ecdsa256), "ECDSA (256-bit)");
     }
 }

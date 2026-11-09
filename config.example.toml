@@ -37,6 +37,9 @@ audit_log_path = "audit.jsonl"
 # (In TUI mode, an interactive approval dialog is always shown for new hosts)
 tofu_auto_accept = false
 
+# Allow continuing even if host key changed/mismatches (false by default for safety)
+accept_host_key_changes = false
+
 # Enable automatic secret redaction (private keys, tokens, passwords) in logs and agent outputs
 mask_secrets = true
 

@@ -45,7 +45,7 @@
 * 🖥️ **Interactive Terminal UI:** Built with Ratatui in a Tokyo Night palette. Enter credentials securely with masked typing (`••••`), monitor remote server resource usage, and inspect agent activity in real time.
 * 🕒 **Session History:** Automatically saves connection targets (host, port, username, auth method) after each successful session. Instantly select from recent sessions with `[Space]` or `[←]`/`[→]`—no need to re-type or edit config files, while passwords remain strictly manual.
 * 🛡️ **SSH Security & Credential Hygiene:**
-  * **Known Hosts & TOFU:** Checks `~/.ssh/known_hosts`. Prompts an interactive Trust-On-First-Use (TOFU) SHA-256 fingerprint verification dialog before connecting to unknown hosts. Aborts immediately if host keys change.
+  * **Known Hosts & TOFU:** Checks `~/.ssh/known_hosts`, `known_hosts.d/*` (OpenSSH 9.8+ / Ubuntu 24.04 & 26.04), and system-wide files. Formats fingerprints identically to OpenSSH (`SHA256:Base64...`). If a host key has changed, interactive options allow operators to **`[Y]` Accept & Update known_hosts**, **`[O]` Connect Once**, or **`[N]` Abort**.
   * **Memory Zeroization:** Interactive passwords and passphrases are handled using `zeroize` and scrubbed from RAM immediately after authentication completes.
   * **No Plaintext Passwords on Disk:** Configuration files never store plaintext passwords.
   * **Secret Redaction:** Automatically masks private keys, JWTs, and API credentials from command outputs and display logs.
@@ -324,6 +324,7 @@ Options:
       --mcp-port <PORT>      MCP server HTTP port [default: 8765]
       --policy <POLICY>      Security policy mode [high_risk | strict | read_only | autonomous]
       --no-approval          Run in Autonomous mode (execute all commands without approval)
+      --accept-host-key      Automatically accept new or changed host keys (StrictHostKeyChecking=accept-new)
       --install-mcp          Register this MCP server in Pi's ~/.pi/agent/mcp.json
   -l, --local                Used with --install-mcp to configure project-local .pi/mcp.json
       --install-pi           Install the /ssh command extension into ~/.pi/agent/extensions/ssh.ts

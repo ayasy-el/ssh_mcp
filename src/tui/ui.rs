@@ -658,7 +658,7 @@ fn render_log_detail_modal(f: &mut Frame, log: &crate::mcp::LiveLogEntry) {
 }
 
 fn render_tofu_modal(f: &mut Frame, tofu: &crate::tui::app::TofuState) {
-    let area = centered_rect(60, 35, f.area());
+    let area = centered_rect(65, 38, f.area());
     f.render_widget(Clear, area);
 
     let modal_block = Block::default()
@@ -670,19 +670,27 @@ fn render_tofu_modal(f: &mut Frame, tofu: &crate::tui::app::TofuState) {
 
     let inner = modal_block.inner(area);
     let text = vec![
-        Line::from(format!("Host: {}:{}", tofu.host, tofu.port)),
-        Line::from(Span::styled(
-            format!("Fingerprint: {}", tofu.fingerprint),
-            Style::default().fg(tokyo_night::CYAN),
-        )),
+        Line::from(vec![
+            Span::styled("Target Host:   ", Style::default().fg(tokyo_night::COMMENT)),
+            Span::styled(format!("{}:{}", tofu.host, tofu.port), Style::default().fg(tokyo_night::CYAN).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(vec![
+            Span::styled("Key Algorithm: ", Style::default().fg(tokyo_night::COMMENT)),
+            Span::styled(tofu.key_type_name.as_str(), Style::default().fg(tokyo_night::YELLOW).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(vec![
+            Span::styled("Fingerprint:   ", Style::default().fg(tokyo_night::COMMENT)),
+            Span::styled(tofu.fingerprint.as_str(), Style::default().fg(tokyo_night::GREEN).add_modifier(Modifier::BOLD)),
+        ]),
         Line::from(""),
         Line::from("This host is not yet recorded in ~/.ssh/known_hosts."),
-        Line::from("Do you want to trust this fingerprint and save it?"),
+        Line::from("Do you want to trust this server fingerprint and save it to known_hosts?"),
         Line::from(""),
-        Line::from(Span::styled(
-            " [Y] Trust & Save to known_hosts        [N] Reject & Abort ",
-            Style::default().fg(tokyo_night::FG).add_modifier(Modifier::BOLD),
-        )),
+        Line::from(vec![
+            Span::styled(" [Y] Trust & Save ", Style::default().fg(tokyo_night::BG).bg(tokyo_night::GREEN).add_modifier(Modifier::BOLD)),
+            Span::raw("     "),
+            Span::styled(" [N] Reject & Abort (Esc) ", Style::default().fg(tokyo_night::BG).bg(tokyo_night::RED).add_modifier(Modifier::BOLD)),
+        ]),
     ];
 
     let p = Paragraph::new(text).wrap(Wrap { trim: true });
@@ -690,12 +698,12 @@ fn render_tofu_modal(f: &mut Frame, tofu: &crate::tui::app::TofuState) {
 }
 
 fn render_mitm_modal(f: &mut Frame, mitm: &crate::tui::app::MitmState) {
-    let area = centered_rect(65, 40, f.area());
+    let area = centered_rect(76, 48, f.area());
     f.render_widget(Clear, area);
 
     let modal_block = Block::default()
         .borders(Borders::ALL)
-        .title(" 🚨 CRITICAL SECURITY ALERT: HOST KEY MISMATCH! ")
+        .title(" 🚨 SECURITY ALERT: HOST KEY MISMATCH 🚨 ")
         .title_alignment(Alignment::Center)
         .style(Style::default().fg(tokyo_night::RED).add_modifier(Modifier::BOLD));
     f.render_widget(modal_block.clone(), area);
@@ -703,19 +711,48 @@ fn render_mitm_modal(f: &mut Frame, mitm: &crate::tui::app::MitmState) {
     let inner = modal_block.inner(area);
     let text = vec![
         Line::from(Span::styled(
-            "WARNING: POTENTIAL MAN-IN-THE-MIDDLE ATTACK DETECTED!",
+            "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!",
             Style::default().fg(tokyo_night::RED).add_modifier(Modifier::BOLD),
         )),
-        Line::from(format!("Host: {}:{}", mitm.host, mitm.port)),
-        Line::from(format!("Received Fingerprint: {}", mitm.fingerprint)),
         Line::from(""),
-        Line::from("The remote host key has CHANGED from what is recorded in ~/.ssh/known_hosts."),
-        Line::from("Someone could be eavesdropping on you right now."),
+        Line::from(vec![
+            Span::styled("Target Host:   ", Style::default().fg(tokyo_night::COMMENT)),
+            Span::styled(format!("{}:{}", mitm.host, mitm.port), Style::default().fg(tokyo_night::CYAN).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(vec![
+            Span::styled("Key Algorithm: ", Style::default().fg(tokyo_night::COMMENT)),
+            Span::styled(mitm.key_type_name.as_str(), Style::default().fg(tokyo_night::YELLOW).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(vec![
+            Span::styled("Fingerprint:   ", Style::default().fg(tokyo_night::COMMENT)),
+            Span::styled(mitm.fingerprint.as_str(), Style::default().fg(tokyo_night::GREEN).add_modifier(Modifier::BOLD)),
+        ]),
         Line::from(""),
         Line::from(Span::styled(
-            " [N] Abort Connection (RECOMMENDED) ",
-            Style::default().fg(tokyo_night::FG).bg(tokyo_night::RED).add_modifier(Modifier::BOLD),
+            "The key presented by the remote server differs from the entry in ~/.ssh/known_hosts.",
+            Style::default().fg(tokyo_night::FG),
         )),
+        Line::from(Span::styled(
+            "This can happen if the server was reinstalled, IP rotated, or an attacker is intercepting traffic.",
+            Style::default().fg(tokyo_night::COMMENT),
+        )),
+        Line::from(""),
+        Line::from(Span::styled("Select an action:", Style::default().fg(tokyo_night::YELLOW).add_modifier(Modifier::BOLD))),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(" [Y] Accept & Update ", Style::default().fg(tokyo_night::BG).bg(tokyo_night::GREEN).add_modifier(Modifier::BOLD)),
+            Span::raw("  Overwrite ~/.ssh/known_hosts with this key"),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(" [O] Connect Once    ", Style::default().fg(tokyo_night::BG).bg(tokyo_night::YELLOW).add_modifier(Modifier::BOLD)),
+            Span::raw("  Proceed for this session without saving"),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(" [N] Abort (Esc)     ", Style::default().fg(tokyo_night::BG).bg(tokyo_night::RED).add_modifier(Modifier::BOLD)),
+            Span::raw("  Disconnect immediately (RECOMMENDED if unexpected)"),
+        ]),
     ];
 
     let p = Paragraph::new(text).wrap(Wrap { trim: true });

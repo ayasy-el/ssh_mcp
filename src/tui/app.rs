@@ -68,6 +68,7 @@ pub struct TofuState {
     pub host: String,
     pub port: u16,
     pub fingerprint: String,
+    pub key_type_name: String,
     pub raw_key: Vec<u8>,
     pub key_type: ssh2::HostKeyType,
     pub session: ssh2::Session,
@@ -77,6 +78,10 @@ pub struct MitmState {
     pub host: String,
     pub port: u16,
     pub fingerprint: String,
+    pub key_type_name: String,
+    pub raw_key: Vec<u8>,
+    pub key_type: ssh2::HostKeyType,
+    pub session: ssh2::Session,
 }
 
 pub struct App {

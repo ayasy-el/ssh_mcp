@@ -116,11 +116,34 @@ async fn run_loop<B: ratatui::backend::Backend>(
                     continue;
                 }
 
-                // 3. Handle MITM Modal
-                if app.mitm_dialog.is_some() {
-                    if let KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc = key.code {
-                        app.mitm_dialog = None;
-                        app.status_message = Some(("Connection aborted due to host key mismatch".to_string(), true));
+                // 3. Handle Host Key Mismatch Warning Modal
+                if let Some(mitm) = app.mitm_dialog.take() {
+                    match key.code {
+                        KeyCode::Char('y') | KeyCode::Char('Y') => {
+                            // User chose to accept and update known_hosts
+                            if let Err(e) = SshClient::save_known_host(
+                                &mitm.session,
+                                &mitm.host,
+                                mitm.port,
+                                &mitm.raw_key,
+                                mitm.key_type,
+                            ) {
+                                app.status_message = Some((format!("Failed to update known_hosts: {}", e), true));
+                            } else {
+                                complete_authentication(app, mitm.session, mcp_server).await;
+                            }
+                        }
+                        KeyCode::Char('o') | KeyCode::Char('O') => {
+                            // User chose to proceed once without altering ~/.ssh/known_hosts
+                            complete_authentication(app, mitm.session, mcp_server).await;
+                        }
+                        KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                            app.status_message = Some(("Connection aborted due to host key mismatch".to_string(), true));
+                        }
+                        _ => {
+                            // Keep modal open on unrelated keys
+                            app.mitm_dialog = Some(mitm);
+                        }
                     }
                     continue;
                 }
@@ -249,23 +272,28 @@ async fn initiate_connection(app: &mut App, mcp_server: &McpServer) {
         Ok((session, HostKeyStatus::Trusted)) => {
             complete_authentication(app, session, mcp_server).await;
         }
-        Ok((session, HostKeyStatus::NewHost { host, port, fingerprint_sha256, raw_key, key_type })) => {
+        Ok((session, HostKeyStatus::NewHost { host, port, fingerprint_sha256, raw_key, key_type, key_type_name })) => {
             app.is_connecting = false;
             app.tofu_dialog = Some(TofuState {
                 host,
                 port,
                 fingerprint: fingerprint_sha256,
+                key_type_name,
                 raw_key,
                 key_type,
                 session,
             });
         }
-        Ok((_, HostKeyStatus::Mismatch { host, port, fingerprint_sha256 })) => {
+        Ok((session, HostKeyStatus::Mismatch { host, port, fingerprint_sha256, raw_key, key_type, key_type_name })) => {
             app.is_connecting = false;
             app.mitm_dialog = Some(MitmState {
                 host,
                 port,
                 fingerprint: fingerprint_sha256,
+                key_type_name,
+                raw_key,
+                key_type,
+                session,
             });
         }
         Err(e) => {

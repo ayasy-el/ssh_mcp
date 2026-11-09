@@ -64,6 +64,10 @@ struct Cli {
     #[arg(long, visible_alias = "no-approval")]
     no_approval: bool,
 
+    /// Automatically accept new or changed host keys (equivalent to StrictHostKeyChecking=accept-new)
+    #[arg(long, visible_alias = "accept-host-key", visible_alias = "insecure-accept-host-key")]
+    accept_host_key: bool,
+
     /// Install the /ssh command extension into Pi Coding Agent (~/.pi/agent/extensions/ssh.ts)
     #[arg(long)]
     install_pi: bool,
@@ -119,6 +123,10 @@ async fn main() -> Result<()> {
     }
     if cli.no_approval {
         config.security.hitl_mode = HitlMode::Autonomous;
+    }
+    if cli.accept_host_key {
+        config.security.tofu_auto_accept = true;
+        config.security.accept_host_key_changes = true;
     }
 
     // Determine execution mode
@@ -183,11 +191,27 @@ async fn main() -> Result<()> {
                     ));
                 }
             }
-            Ok((_, HostKeyStatus::Mismatch { host, port, .. })) => {
-                return Err(anyhow!(
-                    "SECURITY ERROR: Host key mismatch detected for {}:{}! Possible Man-in-the-Middle attack.",
-                    host, port
-                ));
+            Ok((session, HostKeyStatus::Mismatch { host, port, raw_key, key_type, fingerprint_sha256, key_type_name })) => {
+                if config.security.accept_host_key_changes || cli.accept_host_key {
+                    let _ = SshClient::save_known_host(&session, &host, port, &raw_key, key_type);
+                    let client = SshClient::authenticate(
+                        session,
+                        &host,
+                        port,
+                        user,
+                        &auth_method,
+                        password,
+                        cli.key.as_deref(),
+                        None,
+                    )?;
+                    initial_client = Some(Arc::new(client));
+                } else {
+                    return Err(anyhow!(
+                        "SECURITY ERROR: Host key mismatch detected for {}:{} ({}) [{}]!\n\
+                         Run interactively to inspect and accept, or use '--accept-host-key' to update known_hosts.",
+                        host, port, key_type_name, fingerprint_sha256
+                    ));
+                }
             }
             Err(e) => {
                 if is_headless {

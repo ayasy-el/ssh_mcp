@@ -30,20 +30,23 @@ This document details the security architecture, threat model, and hardening pra
 
 ## 2. SSH Security Features
 
-### 2.1 Host Key Verification (`known_hosts`)
-* The application reads the standard OpenSSH `known_hosts` file (located at `~/.ssh/known_hosts`).
-* When connecting to a known host, the host's public key is verified against the stored fingerprint.
-* If a host key does **not match** (`KnownHostResult::Mismatch`):
-  * The connection is **instantly aborted** to prevent MITM attacks.
-  * A warning is displayed indicating that the host key has changed.
-* If the host key is **not found** (`KnownHostResult::NotFound`):
-  * In TUI mode, a modal displays the SHA-256 fingerprint and prompts the operator:
-    ```text
-    New Host Detected: 10.0.0.50:22
-    Fingerprint: SHA256:7uG3YxW+vQ9r...
-    Do you trust this host and want to add it to known_hosts? (y/n)
-    ```
-  * Once accepted, the new key is automatically written to `~/.ssh/known_hosts`.
+### 2.1 Host Key Verification (`known_hosts`) & OpenSSH Fingerprint Format
+* **Standard OpenSSH Fingerprints:** All SHA-256 fingerprints are formatted using RFC 4648 Base64 without padding (e.g. `SHA256:uGOYu+DlNVl6dP769bTnX4EWyV3LNrZlCbm6LBbnxJo`), matching `ssh-keygen -l` and OpenSSH output byte-for-byte.
+* **Negotiation Order Alignment:** Client prioritizes `ssh-ed25519`, then `ecdsa`, then `rsa`, aligning with modern OpenSSH defaults to prevent algorithm mismatch issues on servers with multiple host keys.
+* **Comprehensive File Discovery:** Inspects all standard OpenSSH locations:
+  1. `~/.ssh/known_hosts` and `~/.ssh/known_hosts2`
+  2. `~/.ssh/known_hosts.d/*` (directory-based split format in OpenSSH 9.8+ / modern Ubuntu 24.04 & 26.04)
+  3. System-wide `/etc/ssh/ssh_known_hosts` and `/etc/ssh/ssh_known_hosts2`.
+* **Host Key Mismatch Handling (`KnownHostResult::Mismatch`):**
+  * When a host key differs from `known_hosts`, an alert dialog details the host, key algorithm, and received fingerprint.
+  * Operators are given explicit control:
+    * `[Y] Accept & Update`: Purges the old conflicting host record and updates `~/.ssh/known_hosts` with the new key.
+    * `[O] Connect Once`: Proceeds with the current session without altering disk files.
+    * `[N] Abort Connection`: Terminates the connection immediately.
+  * In headless/daemon mode, connections abort by default unless `--accept-host-key` or `accept_host_key_changes = true` is explicitly configured.
+* **Trust On First Use (`KnownHostResult::NotFound`):**
+  * In TUI mode, prompts operator with `[Y] Trust & Save` or `[N] Reject & Abort`.
+  * In headless mode, requires `tofu_auto_accept = true` or `--accept-host-key`.
 
 ### 2.2 Memory Zeroization (`Zeroizing`)
 * Passwords and passphrases are stored in memory wrapped in `Zeroizing<String>`.

@@ -16,7 +16,7 @@ futures-util = "0.3"
 
 # HTTP Server for MCP (Streamable HTTP / SSE)
 axum = { version = "0.8", features = ["tokio", "macros"] }
-tower-http = { version = "0.6", features = ["cors", "trace"] }
+tower-http = { version = "0.7", features = ["cors", "trace"] }
 
 # TUI
 ratatui = { version = "0.29", default-features = false, features = ["crossterm"] }
